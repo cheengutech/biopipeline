@@ -1,0 +1,94 @@
+.sidebar {
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  padding: 16px 13px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  height: 100%;
+}
+
+.viewBtns { display: flex; gap: 4px; margin-bottom: 10px; }
+.viewBtn {
+  flex: 1; padding: 5px 0; border-radius: 5px;
+  border: 1px solid var(--border2); background: transparent;
+  color: var(--muted); cursor: pointer; font-size: 11px;
+  transition: all .15s; text-align: center;
+}
+.viewBtnActive { background: var(--accent2); border-color: var(--accent2); color: #fff; }
+
+.quickAddBar { display: flex; gap: 5px; margin-bottom: 10px; }
+.quickInput {
+  flex: 1; background: var(--bg); border: 1px solid var(--border2);
+  color: var(--text); padding: 7px 9px; border-radius: 6px;
+  font-size: 12px; font-family: var(--font-mono);
+  text-transform: uppercase;
+}
+.quickInput::placeholder { text-transform: none; color: var(--muted); }
+.quickInput:focus { outline: none; border-color: var(--accent); }
+.quickBtn {
+  padding: 7px 11px; background: var(--accent); color: #000;
+  border: none; border-radius: 6px; font-weight: 600;
+  font-size: 12px; cursor: pointer; white-space: nowrap;
+}
+.quickBtn:hover { opacity: .85; }
+
+.filterRow { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 10px; }
+.chip {
+  padding: 3px 8px; border-radius: 20px; border: 1px solid var(--border2);
+  font-size: 11px; cursor: pointer; background: transparent;
+  color: var(--muted); transition: all .15s;
+}
+.chipActive, .chip:hover { background: var(--accent2); border-color: var(--accent2); color: #fff; }
+
+.list { flex: 1; overflow-y: auto; }
+.empty { font-size: 12px; color: var(--muted); padding: 12px; text-align: center; line-height: 1.6; }
+
+.card {
+  padding: 10px 11px; border-radius: 8px; border: 1px solid var(--border);
+  margin-bottom: 6px; cursor: pointer; transition: all .15s; background: var(--bg);
+}
+.card:hover { border-color: var(--border2); background: var(--surface2); }
+.cardActive { border-color: var(--accent) !important; background: rgba(0,229,180,0.05) !important; }
+
+.cardTop { display: flex; justify-content: space-between; align-items: flex-start; }
+.cardLeft { display: flex; align-items: center; gap: 4px; }
+.cardRight { text-align: right; }
+
+.ticker { font-family: var(--font-mono); font-size: 11px; color: var(--accent); font-weight: 500; }
+.favBtn { background: none; border: none; cursor: pointer; font-size: 13px; color: var(--muted); padding: 0 2px; transition: transform .15s; line-height: 1; }
+.favBtn:hover { transform: scale(1.2); }
+.favBtnActive { color: var(--gold) !important; }
+
+.priceVal { font-family: var(--font-mono); font-size: 12px; font-weight: 500; }
+.priceChange { font-size: 10px; }
+.priceUp { color: var(--success); }
+.priceDown { color: var(--danger); }
+
+.companyName { font-weight: 500; font-size: 13px; margin-top: 2px; }
+
+.cardBottom { display: flex; justify-content: space-between; align-items: center; margin-top: 3px; }
+.sector { font-size: 11px; color: var(--muted); }
+.score { font-family: var(--font-mono); font-size: 11px; font-weight: 500; padding: 2px 6px; border-radius: 4px; }
+.scoreHigh { background: rgba(46,204,113,0.15); color: var(--success); }
+.scoreMid  { background: rgba(245,166,35,0.15);  color: var(--warn); }
+.scoreLow  { background: rgba(232,69,74,0.15);   color: var(--danger); }
+
+.onboardBtn {
+  width: 100%; padding: 8px; border: 1px dashed var(--border2);
+  background: transparent; color: var(--muted); border-radius: 8px;
+  cursor: pointer; font-size: 12px; transition: all .15s; margin-top: 8px; margin-bottom: 14px;
+}
+.onboardBtn:hover { border-color: var(--accent); color: var(--accent); }
+
+.reference {
+  padding: 11px; background: var(--surface2); border-radius: 8px;
+  border: 1px solid var(--border); font-size: 11px;
+}
+.refTitle {
+  font-family: var(--font-mono); font-size: 10px; color: var(--muted);
+  letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 8px;
+}
+.refRow { display: flex; justify-content: space-between; padding: 2px 0; color: var(--muted); }
+.refDivider { border-top: 1px solid var(--border); margin: 6px 0; }

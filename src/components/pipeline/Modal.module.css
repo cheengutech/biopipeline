@@ -1,0 +1,197 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.75);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: 12px;
+  padding: 24px;
+  width: 440px;
+  max-width: 95vw;
+}
+
+.steps {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 18px;
+}
+
+.step {
+  flex: 1;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--border2);
+}
+.stepDone { background: var(--accent); }
+.stepCurrent { background: var(--accent2); }
+
+.title {
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.stepSub {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 18px;
+  line-height: 1.55;
+}
+
+.formGroup { margin-bottom: 13px; }
+
+.label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+
+.input {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border2);
+  color: var(--text);
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  transition: border-color .15s;
+}
+.input:focus { outline: none; border-color: var(--accent); }
+
+.select {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border2);
+  color: var(--text);
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.textarea {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border2);
+  color: var(--text);
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  resize: vertical;
+  line-height: 1.6;
+}
+.textarea:focus { outline: none; border-color: var(--accent); }
+.textarea::placeholder { color: var(--muted); }
+
+.priceRow {
+  display: flex;
+  gap: 18px;
+  margin-bottom: 16px;
+  padding: 12px;
+  background: var(--surface2);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+.metaLabel { font-size: 11px; color: var(--muted); margin-bottom: 3px; }
+.bigVal { font-family: var(--font-mono); font-size: 17px; font-weight: 600; }
+
+.row { display: flex; gap: 8px; margin-bottom: 12px; }
+
+.fetchSuccess {
+  font-size: 12px;
+  color: var(--success);
+  margin-top: 6px;
+}
+
+.error {
+  font-size: 12px;
+  color: var(--danger);
+  margin-top: 6px;
+}
+
+.drugEntry {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 10px;
+}
+.drugHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.drugLabel { font-size: 12px; font-weight: 500; }
+.removeBtn {
+  background: none;
+  border: none;
+  color: var(--danger);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 2px;
+}
+.removeBtn:disabled { opacity: 0.3; cursor: default; }
+
+.addDrugBtn {
+  width: 100%;
+  padding: 8px;
+  border: 1px dashed var(--border2);
+  background: transparent;
+  color: var(--accent);
+  border-color: var(--accent);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  margin-bottom: 14px;
+  transition: opacity .15s;
+}
+.addDrugBtn:hover { opacity: 0.75; }
+
+.btns {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.cancelBtn {
+  padding: 8px 14px;
+  background: transparent;
+  border: 1px solid var(--border2);
+  color: var(--muted);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: color .15s;
+}
+.cancelBtn:hover { color: var(--text); }
+
+.primaryBtn {
+  padding: 8px 18px;
+  background: var(--accent);
+  color: #000;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: opacity .15s;
+}
+.primaryBtn:hover { opacity: 0.85; }
+.primaryBtn:disabled { opacity: 0.4; cursor: not-allowed; }

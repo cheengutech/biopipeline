@@ -1,0 +1,122 @@
+.sectionTitle {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 12px;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.badge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-weight: 400;
+}
+
+/* Catalyst */
+.catalystGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+  gap: 12px;
+}
+
+.catalystCard {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 15px;
+  border-left: 3px solid var(--border2);
+}
+
+.catHeader { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; }
+.catDrug { font-weight: 500; font-size: 13px; }
+.catDate { font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+.catIndication { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+
+.probRows { margin-top: 9px; }
+.probRow { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; font-size: 12px; color: var(--muted); }
+
+/* Science */
+.scienceGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  margin-bottom: 8px;
+}
+
+.sciDim { margin-bottom: 14px; }
+.sciDimHeader { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.sciDimLabel { font-size: 12px; color: var(--text); }
+
+.sciSummary {
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-radius: 10px;
+  padding: 16px;
+}
+
+/* Pipeline table */
+.pipelineTable {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 16px;
+}
+.pipelineTable thead tr { border-bottom: 1px solid var(--border2); }
+.pipelineTable th {
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  padding: 8px 10px;
+  font-weight: 400;
+}
+.pipelineTable td { padding: 10px 10px; border-bottom: 1px solid var(--border); font-size: 13px; }
+.pipelineTable tr:last-child td { border-bottom: none; }
+.pipelineTable tbody tr:hover td { background: var(--surface2); }
+
+/* Charts */
+.chartsGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-top: 4px;
+}
+
+.chartCard {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+}
+
+.chartTitle { font-size: 12px; color: var(--muted); margin-bottom: 12px; }
+
+/* FDA comps table */
+.compTable {
+  width: 100%;
+  border-collapse: collapse;
+}
+.compTable th {
+  text-align: left;
+  padding: 7px 10px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 1px;
+  border-bottom: 1px solid var(--border2);
+}
+.compTable td { padding: 9px 10px; border-bottom: 1px solid var(--border); font-size: 12px; }
+.compTable tr:last-child td { border-bottom: none; }
+.compTable tbody tr:hover td { background: var(--surface2); }
+
+@media (max-width: 800px) {
+  .scienceGrid { grid-template-columns: 1fr; }
+  .chartsGrid { grid-template-columns: 1fr; }
+}
