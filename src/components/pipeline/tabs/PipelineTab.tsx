@@ -240,7 +240,7 @@ export function ValuationTab({ company, scienceScores, livePrice, onSaveNotes, n
           { label:'Intrinsic Est.', val:`~$${(totalRNPV+c.cash).toFixed(1)}B`, color:'var(--accent)', size:14 },
         ].map((row, i) => (
           <div key={i} style={{ display:'flex', justifyContent:'space-between', padding:`${i===0?'10px':'7px'} 0`, borderBottom: i<5?'1px solid var(--border)':'none', borderTop: i===0?'1px solid var(--border2)':'none', marginTop: i===0?4:0, fontSize:13 }}>
-            <span style={{ color:'var(--muted)', fontWeight: i===0||i===5?500:400, color: i===0||i===5?'var(--text)':'var(--muted)' }}>{row.label}</span>
+            <span style={{ color: i===0||i===5?'var(--text)':'var(--muted)', fontWeight: i===0||i===5?500:400 }}>{row.label}</span>
             <span style={{ fontFamily:'var(--font-mono)', fontWeight:500, color:row.color, fontSize:row.size }}>{row.val}</span>
           </div>
         ))}
