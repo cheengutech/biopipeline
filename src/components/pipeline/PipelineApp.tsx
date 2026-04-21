@@ -8,6 +8,7 @@ import Sidebar from './Sidebar';
 import CompanyDetail from './CompanyDetail';
 import QuickAddModal from './QuickAddModal';
 import OnboardModal from './OnboardModal';
+import DashboardTab from './tabs/DashboardTab';
 
 export default function PipelineApp() {
   const [companies, setCompanies] = useState<any[]>(DEFAULT_COMPANIES);
@@ -22,6 +23,7 @@ export default function PipelineApp() {
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [showOnboard, setShowOnboard] = useState(false);
   const [activeTab, setActiveTab] = useState('catalyst');
+  const [showDashboard, setShowDashboard] = useState(true); // ← land on dashboard by default
   const priceIntervalRef = useRef<NodeJS.Timeout>();
 
   const selectedCompany = companies.find(c => c.ticker === selectedTicker) ?? companies[0];
@@ -52,7 +54,6 @@ export default function PipelineApp() {
           pipeline: row.pipeline ?? [],
           entryTarget: row.entry_target,
         }));
-        // Merge: keep defaults that aren't in watchlist, add watchlist entries
         const wlTickers = new Set(wlCompanies.map((c: any) => c.ticker));
         const merged = [
           ...wlCompanies,
@@ -61,21 +62,18 @@ export default function PipelineApp() {
         setCompanies(merged);
       }
 
-      // Science scores
       if (sci.data) {
         const map: Record<string, Record<string, number>> = {};
         sci.data.forEach((row: any) => { map[row.key] = row.scores; });
         setScienceScores(map);
       }
 
-      // Notes
       if (nt.data) {
         const map: Record<string, { thesis: string; risks: string }> = {};
         nt.data.forEach((row: any) => { map[row.ticker] = { thesis: row.thesis, risks: row.risks }; });
         setNotes(map);
       }
 
-      // Favorites
       if (favs.data) {
         setFavorites(favs.data.map((r: any) => r.ticker));
       }
@@ -129,7 +127,6 @@ export default function PipelineApp() {
     setScienceScores(prev => {
       const existing = prev[key] ?? {};
       const updated = { ...existing, [dim]: val };
-      // Persist to Supabase
       supabase.from('science_scores').upsert({ key, scores: updated, updated_at: new Date().toISOString() }, { onConflict: 'key' })
         .then(({ error }) => { if (error) console.warn('science score save error', error); });
       return { ...prev, [key]: updated };
@@ -144,7 +141,7 @@ export default function PipelineApp() {
     });
     setSelectedTicker(company.ticker);
     setActiveTab('catalyst');
-    // Save to Supabase watchlist
+    setShowDashboard(false); // jump to detail view after adding
     try {
       await supabase.from('watchlist').upsert({
         ticker: company.ticker, name: company.name, sector: company.sector,
@@ -153,7 +150,6 @@ export default function PipelineApp() {
         entry_target: company.entryTarget ?? null,
       }, { onConflict: 'ticker' });
     } catch (e) { console.warn('Supabase add company error', e); }
-    // Fetch price
     const data = await fetchPrice(company.ticker);
     if (data) setPrices(prev => ({ ...prev, [company.ticker]: data }));
   }, []);
@@ -173,6 +169,24 @@ export default function PipelineApp() {
         <div className={styles.headerLeft}>
           <span className={styles.logo}>arbi<span>.to</span></span>
           <span className={styles.logoTag}>PIPELINE</span>
+          {/* Dashboard toggle button */}
+          <button
+            onClick={() => setShowDashboard(true)}
+            style={{
+              marginLeft: 16,
+              background: showDashboard ? 'var(--accent)' : 'transparent',
+              color: showDashboard ? 'white' : 'var(--text-dim)',
+              border: '1px solid var(--border)',
+              borderRadius: 4,
+              padding: '4px 12px',
+              fontSize: 12,
+              fontWeight: 500,
+              cursor: 'pointer',
+              transition: 'all 0.15s',
+            }}
+          >
+            ◫ Dashboard
+          </button>
         </div>
         <div className={styles.headerRight}>
           {priceStatus && <span className={styles.priceStatus}>{priceStatus}</span>}
@@ -192,7 +206,11 @@ export default function PipelineApp() {
           sidebarView={sidebarView}
           sectorFilter={sectorFilter}
           scienceScores={scienceScores}
-          onSelect={(ticker) => { setSelectedTicker(ticker); setActiveTab('catalyst'); }}
+          onSelect={(ticker) => {
+            setSelectedTicker(ticker);
+            setActiveTab('catalyst');
+            setShowDashboard(false); // sidebar click leaves dashboard
+          }}
           onToggleFav={toggleFav}
           onSetView={setSidebarView}
           onSetSector={setSectorFilter}
@@ -200,19 +218,35 @@ export default function PipelineApp() {
           onFullOnboard={() => setShowOnboard(true)}
         />
 
-        {/* Main content */}
+        {/* Main content — Dashboard or CompanyDetail */}
         <main className={styles.main}>
-          {selectedCompany && (
-            <CompanyDetail
-              company={selectedCompany}
-              price={prices[selectedCompany.ticker]}
+          {showDashboard ? (
+            <DashboardTab
+              companies={companies}
+              prices={prices}
+              favorites={favorites}
               scienceScores={scienceScores}
-              notes={notes[selectedCompany.ticker]}
-              activeTab={activeTab}
-              onTabChange={setActiveTab}
-              onScienceScore={updateScienceScore}
-              onSaveNotes={saveNotes}
+              onSelect={(ticker) => {
+                setSelectedTicker(ticker);
+                setActiveTab('catalyst');
+                setShowDashboard(false);
+              }}
+              onToggleFav={toggleFav}
+              onQuickAdd={() => setShowQuickAdd(true)}
             />
+          ) : (
+            selectedCompany && (
+              <CompanyDetail
+                company={selectedCompany}
+                price={prices[selectedCompany.ticker]}
+                scienceScores={scienceScores}
+                notes={notes[selectedCompany.ticker]}
+                activeTab={activeTab}
+                onTabChange={setActiveTab}
+                onScienceScore={updateScienceScore}
+                onSaveNotes={saveNotes}
+              />
+            )
           )}
         </main>
       </div>
