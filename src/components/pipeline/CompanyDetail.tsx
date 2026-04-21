@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { calcApprovalProb, calcScienceMultiplier, SCIENCE_DIMS, FDA_PROBS, SECTOR_MOD, DESIG_MOD, CRL_PATTERNS, FDA_COMPS, CATALYST_IMPACT } from '@/lib/constants';
+import { supabase } from '@/lib/supabase';
 import styles from './CompanyDetail.module.css';
 import ScienceTab from './tabs/ScienceTab';
 import CatalystTab from './tabs/CatalystTab';
@@ -13,13 +14,11 @@ function fmtBillions(n: number | null | undefined): string {
   if (Math.abs(n) >= 1) return `$${n.toFixed(2)}B`;
   return `$${(n * 1000).toFixed(0)}M`;
 }
-
 function fmtBillionsPerYear(n: number | null | undefined): string {
   if (n == null || isNaN(n)) return '—';
   if (Math.abs(n) >= 1) return `$${n.toFixed(2)}B/yr`;
   return `$${(n * 1000).toFixed(0)}M/yr`;
 }
-
 function fmtYears(n: number | null | undefined): string {
   if (n == null || isNaN(n) || !isFinite(n)) return '—';
   return `${n.toFixed(1)}y`;
@@ -50,6 +49,74 @@ export default function CompanyDetail({
   const c = company;
   const livePrice  = price?.price  ?? c.price;
   const liveChange = price?.change ?? c.priceChange ?? 0;
+
+  // ── Refresh pipeline state ───────────────────────────────────────────────
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [refreshResult, setRefreshResult] = useState<{ added: string[]; removed: string[]; updated: string[] } | null>(null);
+
+  async function handleRefreshPipeline() {
+    setRefreshing(true);
+    setRefreshError(null);
+    setRefreshResult(null);
+    try {
+      const r = await fetch('/api/pipeline-discover', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticker: c.ticker, companyName: c.name, sector: c.sector }),
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        setRefreshError(data.error || 'Refresh failed');
+        return;
+      }
+      // Diff old vs new pipeline
+      const oldDrugs = new Set((c.pipeline ?? []).map((d: any) => d.drug));
+      const newDrugs = new Set(data.pipeline.map((d: any) => d.drug));
+      const added = data.pipeline.filter((d: any) => !oldDrugs.has(d.drug)).map((d: any) => d.drug);
+      const removed = (c.pipeline ?? []).filter((d: any) => !newDrugs.has(d.drug)).map((d: any) => d.drug);
+      const updated = data.pipeline.filter((d: any) => oldDrugs.has(d.drug)).map((d: any) => d.drug);
+
+      // Merge: keep existing science scores from old drugs that are still present
+      const mergedPipeline = data.pipeline.map((newDrug: any) => {
+        const existing = (c.pipeline ?? []).find((d: any) => d.drug === newDrug.drug);
+        if (existing) {
+          // Preserve the existing science scores AND any user-edited fields
+          return {
+            ...newDrug,
+            science: existing.science ?? newDrug.science,
+            peakSales: existing.peakSales ?? newDrug.peakSales,
+            enrollment: existing.enrollment ?? newDrug.enrollment,
+            primaryEndpoint: existing.primaryEndpoint ?? newDrug.primaryEndpoint,
+          };
+        }
+        return newDrug;
+      });
+
+      // Save to Supabase
+      const { error: dbErr } = await supabase.from('watchlist').upsert({
+        ticker: c.ticker,
+        name: c.name,
+        sector: c.sector,
+        mkt_cap: data.financials.mktCap ?? c.mktCap,
+        cash: data.financials.cash ?? c.cash,
+        burn_rate: data.financials.burnRate ?? c.burnRate,
+        pipeline: mergedPipeline,
+      }, { onConflict: 'ticker' });
+
+      if (dbErr) {
+        setRefreshError('Saved but DB error: ' + dbErr.message);
+      }
+
+      setRefreshResult({ added, removed, updated });
+      // Note: parent state update happens via Supabase reload on next mount.
+      // For instant UI update, you'd need a callback prop — see notes below.
+    } catch (e: any) {
+      setRefreshError(e.message || 'Network error');
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   // rNPV
   let npv = 0;
@@ -95,13 +162,85 @@ export default function CompanyDetail({
             {price && <span className={styles.liveTag}>Live</span>}
           </div>
         </div>
-        <div className={styles.priceBlock}>
-          <div className={styles.price}>${livePrice.toFixed(2)}</div>
-          <div className={styles.priceChange} style={{ color: liveChange >= 0 ? 'var(--success)' : 'var(--danger)' }}>
-            {liveChange >= 0 ? '▲' : '▼'} {Math.abs(liveChange).toFixed(1)}%
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {/* Refresh pipeline button */}
+          <button
+            onClick={handleRefreshPipeline}
+            disabled={refreshing}
+            style={{
+              padding: '6px 12px',
+              borderRadius: 6,
+              border: '1px solid var(--accent)',
+              background: refreshing ? 'rgba(0,229,180,0.1)' : 'rgba(0,229,180,0.18)',
+              color: 'var(--accent)',
+              cursor: refreshing ? 'wait' : 'pointer',
+              fontSize: 11,
+              fontWeight: 500,
+              fontFamily: 'var(--font-mono)',
+              letterSpacing: 0.4,
+              transition: 'all .15s',
+            }}
+            title="Re-discover pipeline from public sources (10-K, IR page, ClinicalTrials.gov)"
+          >
+            {refreshing ? '◌ refreshing…' : '🔄 refresh pipeline'}
+          </button>
+          <div className={styles.priceBlock}>
+            <div className={styles.price}>${livePrice.toFixed(2)}</div>
+            <div className={styles.priceChange} style={{ color: liveChange >= 0 ? 'var(--success)' : 'var(--danger)' }}>
+              {liveChange >= 0 ? '▲' : '▼'} {Math.abs(liveChange).toFixed(1)}%
+            </div>
           </div>
         </div>
       </div>
+
+      {/* Refresh result banner */}
+      {refreshError && (
+        <div style={{
+          padding: '8px 12px',
+          marginBottom: 12,
+          background: 'rgba(232,69,74,0.1)',
+          border: '1px solid rgba(232,69,74,0.4)',
+          borderRadius: 6,
+          fontSize: 12,
+          color: 'var(--danger)',
+        }}>
+          ⚠ {refreshError}
+        </div>
+      )}
+      {refreshResult && (
+        <div style={{
+          padding: '10px 14px',
+          marginBottom: 12,
+          background: 'rgba(0,229,180,0.08)',
+          border: '1px solid rgba(0,229,180,0.3)',
+          borderRadius: 6,
+          fontSize: 12,
+          color: 'var(--text)',
+          lineHeight: 1.6,
+        }}>
+          <div style={{ marginBottom: 4 }}>
+            ✓ Pipeline refreshed.
+            {refreshResult.added.length > 0 && (
+              <span style={{ color: 'var(--success)', marginLeft: 8 }}>
+                +{refreshResult.added.length} new ({refreshResult.added.join(', ')})
+              </span>
+            )}
+            {refreshResult.removed.length > 0 && (
+              <span style={{ color: 'var(--warn)', marginLeft: 8 }}>
+                −{refreshResult.removed.length} removed ({refreshResult.removed.join(', ')})
+              </span>
+            )}
+            {refreshResult.updated.length > 0 && (
+              <span style={{ color: 'var(--muted)', marginLeft: 8 }}>
+                ~{refreshResult.updated.length} updated
+              </span>
+            )}
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--muted)', fontStyle: 'italic' }}>
+            Reload the page to see the changes reflected in the UI (auto-refresh in next iteration).
+          </div>
+        </div>
+      )}
 
       {/* Thesis / entry banner */}
       {(notes?.thesis || c.thesis) && (
