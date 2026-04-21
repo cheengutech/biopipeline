@@ -1,19 +1,17 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { calcCompanyScore, FDA_PROBS } from '@/lib/constants';
 import styles from './DashboardTab.module.css';
 
 interface Catalyst {
-  date?: string;        // ISO date string OR "Q4 2026" / "H1 2026"
-  type?: string;        // 'data', 'pdufa', 'earnings', etc
-  description?: string;
-  drug?: string;
-  binary?: boolean;
+  type?: string;        // 'pdufa' | 'data' | 'conference' | 'enrollment' | 'nda'
+  label?: string;       // e.g. "PDUFA Date", "Ph2 ORR Data"
+  date?: string;        // "Q2 2026" / "Q4 2026" / ISO
 }
 
 interface Drug {
   drug?: string;
-  drugName?: string;     // tolerate either key
   indication?: string;
   phase?: string;
   designations?: string[];
@@ -46,42 +44,36 @@ interface Props {
   onQuickAdd: () => void;
 }
 
-type SortKey = 'ticker' | 'next_catalyst' | 'science' | 'mktCap' | 'runway' | 'change';
+type SortKey = 'ticker' | 'next_catalyst' | 'pipeline_score' | 'mktCap' | 'runway' | 'change';
 type SortDir = 'asc' | 'desc';
 
 // ============================================================
-// Helpers — read from existing pipeline JSONB shape
+// Helpers
 // ============================================================
 function leadDrug(c: Company): Drug | null {
-  return c.pipeline?.[0] ?? null;
+  // "Lead" = highest phase, then most catalysts as tiebreak
+  if (!c.pipeline || c.pipeline.length === 0) return null;
+  const phaseOrder = ['Approved', 'NDA/BLA', 'Phase 3', 'Phase 2', 'Phase 1', 'Preclinical'];
+  return [...c.pipeline].sort((a, b) => {
+    const ai = phaseOrder.indexOf(a.phase ?? '');
+    const bi = phaseOrder.indexOf(b.phase ?? '');
+    if (ai !== bi) return ai - bi;
+    return (b.catalysts?.length ?? 0) - (a.catalysts?.length ?? 0);
+  })[0];
 }
 
-function drugName(d: Drug): string {
-  return d.drug ?? d.drugName ?? '';
-}
-
-// Average science score across all dimensions for the lead drug
-function leadScienceScore(c: Company, scoreMap: Record<string, Record<string, number>>): number | null {
-  const lead = leadDrug(c);
-  if (!lead) return null;
-  const key = `${c.ticker}_${drugName(lead)}`;
-  const scores = scoreMap[key];
-  if (!scores || Object.keys(scores).length === 0) return null;
-  const vals = Object.values(scores);
-  return Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10;
-}
-
-// Pull all catalysts from all drugs in pipeline, return earliest upcoming
-function nextCatalyst(c: Company): { catalyst: Catalyst; daysOut: number | null; sortDate: string } | null {
-  const all: Catalyst[] = (c.pipeline ?? []).flatMap(d => d.catalysts ?? []);
+// Pull all catalysts from all drugs, return earliest upcoming
+function nextCatalyst(c: Company): { catalyst: Catalyst; drug: string; daysOut: number | null; sortDate: string } | null {
+  const all: { catalyst: Catalyst; drug: string }[] = (c.pipeline ?? []).flatMap(d =>
+    (d.catalysts ?? []).map(cat => ({ catalyst: cat, drug: d.drug ?? '' }))
+  );
   if (all.length === 0) return null;
 
   const parsed = all
-    .map(cat => ({ catalyst: cat, ...parseDate(cat.date) }))
+    .map(x => ({ ...x, ...parseDate(x.catalyst.date) }))
     .filter(p => p.sortDate !== null)
     .sort((a, b) => (a.sortDate as string).localeCompare(b.sortDate as string));
 
-  // Prefer first upcoming (>= today), else most recent past
   const today = new Date().toISOString().slice(0, 10);
   const upcoming = parsed.find(p => (p.sortDate as string) >= today);
   const pick = upcoming ?? parsed[0];
@@ -89,34 +81,31 @@ function nextCatalyst(c: Company): { catalyst: Catalyst; daysOut: number | null;
 
   return {
     catalyst: pick.catalyst,
+    drug: pick.drug,
     daysOut: pick.daysOut,
     sortDate: pick.sortDate as string,
   };
 }
 
-// Parse "2026-04-21" or "Q4 2026" or "H1 2026" into a sortable date + days-out
 function parseDate(input?: string): { sortDate: string | null; daysOut: number | null } {
   if (!input) return { sortDate: null, daysOut: null };
   const s = input.trim();
 
-  // ISO date
   if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
     const d = new Date(s);
     if (isNaN(d.getTime())) return { sortDate: null, daysOut: null };
     return { sortDate: s.slice(0, 10), daysOut: daysBetween(d) };
   }
 
-  // Quarter "Q4 2026" / "Q4 26"
   const qm = s.match(/Q([1-4])\s*(\d{2,4})/i);
   if (qm) {
     const q = parseInt(qm[1]);
     const yr = qm[2].length === 2 ? 2000 + parseInt(qm[2]) : parseInt(qm[2]);
-    const month = (q - 1) * 3 + 2; // mid-quarter
+    const month = (q - 1) * 3 + 2;
     const d = new Date(Date.UTC(yr, month - 1, 15));
     return { sortDate: d.toISOString().slice(0, 10), daysOut: daysBetween(d) };
   }
 
-  // Half "H1 2026" / "H2 2026"
   const hm = s.match(/H([12])\s*(\d{2,4})/i);
   if (hm) {
     const h = parseInt(hm[1]);
@@ -126,7 +115,6 @@ function parseDate(input?: string): { sortDate: string | null; daysOut: number |
     return { sortDate: d.toISOString().slice(0, 10), daysOut: daysBetween(d) };
   }
 
-  // Year only
   const ym = s.match(/^(\d{4})$/);
   if (ym) {
     const d = new Date(Date.UTC(parseInt(ym[1]), 5, 15));
@@ -143,7 +131,6 @@ function daysBetween(target: Date): number {
 
 function formatCatalystDate(catalyst: Catalyst): string {
   const raw = catalyst.date ?? '';
-  // If ISO, prettify
   if (/^\d{4}-\d{2}-\d{2}/.test(raw)) {
     const d = new Date(raw);
     return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
@@ -153,13 +140,20 @@ function formatCatalystDate(catalyst: Catalyst): string {
 
 function runwayQuarters(c: Company): number | null {
   if (!c.cash || !c.burnRate || c.burnRate <= 0) return null;
-  return Math.floor(c.cash / c.burnRate);
+  // burnRate is annual (B/yr), so quarters = (cash / burnRate) * 4
+  return Math.round((c.cash / c.burnRate) * 4);
 }
 
 function fmtMcap(n?: number): string {
   if (n == null) return '—';
   if (n >= 1) return `$${n.toFixed(1)}B`;
   return `$${(n * 1000).toFixed(0)}M`;
+}
+
+// "Binary" = high-impact event types (PDUFA, Phase 3 data, NDA decision)
+function isBinary(c: Catalyst): boolean {
+  const t = (c.type ?? '').toLowerCase();
+  return t === 'pdufa' || t === 'nda' || t === 'data';
 }
 
 // ============================================================
@@ -174,19 +168,17 @@ export default function DashboardTab({
   const [sectorFilter, setSectorFilter] = useState('all');
   const [favsOnly, setFavsOnly] = useState(false);
 
-  // Enrich companies with derived fields once
   const enriched = useMemo(() => {
     return companies.map(c => ({
       company: c,
       lead: leadDrug(c),
-      science: leadScienceScore(c, scienceScores),
+      pipelineScore: calcCompanyScore(c, scienceScores),
       next: nextCatalyst(c),
       runway: runwayQuarters(c),
       price: prices[c.ticker],
     }));
   }, [companies, prices, scienceScores]);
 
-  // Filter + sort
   const visible = useMemo(() => {
     let out = enriched;
     if (query) {
@@ -206,10 +198,8 @@ export default function DashboardTab({
           const bd = b.next?.sortDate ?? '9999-12-31';
           return ad.localeCompare(bd) * dir;
         }
-        case 'science': {
-          const av = a.science ?? -Infinity;
-          const bv = b.science ?? -Infinity;
-          return (av - bv) * dir;
+        case 'pipeline_score': {
+          return ((a.pipelineScore ?? 0) - (b.pipelineScore ?? 0)) * dir;
         }
         case 'mktCap': {
           const av = a.company.mktCap ?? -Infinity;
@@ -236,20 +226,20 @@ export default function DashboardTab({
     else { setSortKey(k); setSortDir(k === 'next_catalyst' || k === 'ticker' ? 'asc' : 'desc'); }
   };
 
-  // Stat cards
+  // Stats
   const stats = useMemo(() => {
-    const positions = enriched.filter(r => r.company.entryTarget != null).length;
     const within30 = enriched.filter(r => r.next?.daysOut != null && r.next.daysOut >= 0 && r.next.daysOut <= 30).length;
     const within90 = enriched.filter(r => r.next?.daysOut != null && r.next.daysOut >= 0 && r.next.daysOut <= 90).length;
-    const binaries30 = enriched.filter(r => r.next?.catalyst.binary && r.next?.daysOut != null && r.next.daysOut >= 0 && r.next.daysOut <= 30).length;
-    return { total: enriched.length, positions, within30, within90, binaries30 };
+    const binaries90 = enriched.filter(r => r.next && isBinary(r.next.catalyst) && r.next.daysOut != null && r.next.daysOut >= 0 && r.next.daysOut <= 90).length;
+    const scored = enriched.filter(r => r.pipelineScore != null);
+    const avgScore = scored.length === 0 ? 0 : Math.round(scored.reduce((a, b) => a + (b.pipelineScore ?? 0), 0) / scored.length);
+    return { total: enriched.length, within30, within90, binaries90, avgScore };
   }, [enriched]);
 
   const sectors = useMemo(() => Array.from(new Set(companies.map(c => c.sector))), [companies]);
 
   return (
     <div className={styles.dashboard}>
-      {/* Header */}
       <div className={styles.header}>
         <div>
           <h1 className={styles.title}>Watchlist Dashboard</h1>
@@ -260,15 +250,13 @@ export default function DashboardTab({
         <button className={styles.addBtn} onClick={onQuickAdd}>+ Add Company</button>
       </div>
 
-      {/* Stat cards */}
       <div className={styles.stats}>
-        <StatCard label="Catalysts in 30 days" value={stats.within30} tone={stats.within30 > 0 ? 'warn' : 'neutral'} />
-        <StatCard label="Catalysts in 90 days" value={stats.within90} tone="neutral" />
-        <StatCard label="Binary events in 30d" value={stats.binaries30} tone={stats.binaries30 > 0 ? 'danger' : 'neutral'} />
-        <StatCard label="With entry target" value={stats.positions} tone="success" />
+        <StatCard label="Catalysts in 30 days" value={stats.within30.toString()} tone={stats.within30 > 0 ? 'warn' : 'neutral'} />
+        <StatCard label="Catalysts in 90 days" value={stats.within90.toString()} tone="neutral" />
+        <StatCard label="Binary events in 90d" value={stats.binaries90.toString()} tone={stats.binaries90 > 0 ? 'danger' : 'neutral'} />
+        <StatCard label="Avg pipeline score" value={`${stats.avgScore}/100`} tone="success" />
       </div>
 
-      {/* Filters */}
       <div className={styles.filters}>
         <input
           className={styles.search}
@@ -286,7 +274,6 @@ export default function DashboardTab({
         </label>
       </div>
 
-      {/* Table */}
       <div className={styles.tableWrap}>
         <table className={styles.table}>
           <thead>
@@ -296,7 +283,7 @@ export default function DashboardTab({
               <Th onClick={() => toggleSort('change')} active={sortKey === 'change'} dir={sortDir}>Price</Th>
               <Th onClick={() => toggleSort('next_catalyst')} active={sortKey === 'next_catalyst'} dir={sortDir}>Next Catalyst</Th>
               <th>Days</th>
-              <Th onClick={() => toggleSort('science')} active={sortKey === 'science'} dir={sortDir}>Sci</Th>
+              <Th onClick={() => toggleSort('pipeline_score')} active={sortKey === 'pipeline_score'} dir={sortDir}>Score</Th>
               <Th onClick={() => toggleSort('mktCap')} active={sortKey === 'mktCap'} dir={sortDir}>Mcap</Th>
               <Th onClick={() => toggleSort('runway')} active={sortKey === 'runway'} dir={sortDir}>Runway</Th>
             </tr>
@@ -307,10 +294,11 @@ export default function DashboardTab({
                 No companies match. <button className={styles.linkBtn} onClick={onQuickAdd}>Add one</button>
               </td></tr>
             )}
-            {visible.map(({ company, lead, science, next, runway, price }) => {
+            {visible.map(({ company, lead, pipelineScore, next, runway, price }) => {
               const isFav = favorites.includes(company.ticker);
               const days = next?.daysOut;
               const urgency = days == null ? 'none' : days < 0 ? 'past' : days <= 30 ? 'hot' : days <= 90 ? 'warm' : 'cool';
+              const binary = next ? isBinary(next.catalyst) : false;
               return (
                 <tr key={company.ticker} className={styles.row} onClick={() => onSelect(company.ticker)}>
                   <td>
@@ -327,7 +315,7 @@ export default function DashboardTab({
                   <td>
                     {lead ? (
                       <>
-                        <div className={styles.assetName}>{drugName(lead) || '—'}</div>
+                        <div className={styles.assetName}>{lead.drug || '—'}</div>
                         <div className={styles.assetMeta}>
                           {lead.phase && <span className={`${styles.phaseBadge} ${phaseClass(lead.phase)}`}>{lead.phase}</span>}
                           {lead.indication && <span className={styles.indication}>{lead.indication}</span>}
@@ -351,8 +339,9 @@ export default function DashboardTab({
                     {next ? (
                       <>
                         <div className={styles.catalystDesc}>
-                          {next.catalyst.binary && <span className={styles.binaryFlag}>⚡</span>}
-                          {next.catalyst.description || next.catalyst.type || 'Event'}
+                          {binary && <span className={styles.binaryFlag}>⚡</span>}
+                          {next.catalyst.label || next.catalyst.type || 'Event'}
+                          {next.drug && <span className={styles.catalystDrug}> · {next.drug}</span>}
                         </div>
                         <div className={styles.catalystMeta}>
                           {next.catalyst.type && <span className={styles.eventType}>{next.catalyst.type.toUpperCase()}</span>}
@@ -370,8 +359,8 @@ export default function DashboardTab({
                     )}
                   </td>
                   <td>
-                    <span className={`${styles.scoreCell} ${scoreClass(science)}`}>
-                      {science != null ? science.toFixed(1) : '—'}
+                    <span className={`${styles.scoreCell} ${scoreClass(pipelineScore)}`}>
+                      {pipelineScore != null ? pipelineScore : '—'}
                     </span>
                   </td>
                   <td className={styles.numCell}>{fmtMcap(company.mktCap)}</td>
@@ -384,7 +373,7 @@ export default function DashboardTab({
       </div>
 
       <div className={styles.legend}>
-        ★ favorite · ⚡ binary event · click any row to open detail
+        ★ favorite · ⚡ binary event (PDUFA / data readout / NDA) · click any row to open detail
       </div>
     </div>
   );
@@ -402,7 +391,7 @@ function Th({ children, onClick, active, dir }: { children: React.ReactNode; onC
   );
 }
 
-function StatCard({ label, value, tone }: { label: string; value: number; tone: 'neutral' | 'warn' | 'danger' | 'success' }) {
+function StatCard({ label, value, tone }: { label: string; value: string; tone: 'neutral' | 'warn' | 'danger' | 'success' }) {
   return (
     <div className={`${styles.statCard} ${styles[`tone_${tone}`]}`}>
       <div className={styles.statLabel}>{label}</div>
@@ -414,17 +403,18 @@ function StatCard({ label, value, tone }: { label: string; value: number; tone: 
 function phaseClass(phase: string): string {
   const p = phase.toLowerCase();
   if (p.includes('preclinical')) return styles.phasePreclinical;
-  if (p.includes('1')) return styles.phase1;
-  if (p.includes('2')) return styles.phase2;
-  if (p.includes('3')) return styles.phase3;
+  if (p === 'phase 1') return styles.phase1;
+  if (p === 'phase 2') return styles.phase2;
+  if (p === 'phase 3') return styles.phase3;
   if (p.includes('nda') || p.includes('bla') || p.includes('filed')) return styles.phaseFiled;
   if (p.includes('approved')) return styles.phaseApproved;
   return styles.phasePreclinical;
 }
 
+// Pipeline score is 0–100. Match the color logic from the IOVA detail (orange ~57, etc.)
 function scoreClass(score: number | null): string {
   if (score == null) return '';
-  if (score >= 4) return styles.scoreHigh;
-  if (score >= 3) return styles.scoreMid;
+  if (score >= 75) return styles.scoreHigh;
+  if (score >= 50) return styles.scoreMid;
   return styles.scoreLow;
 }
