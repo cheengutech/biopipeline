@@ -7,6 +7,24 @@ import ScienceTab from './tabs/ScienceTab';
 import CatalystTab from './tabs/CatalystTab';
 import { PipelineTab, MonteCarloTab, ValuationTab } from './tabs/PipelineTab';
 
+// ── Number formatting helpers ──────────────────────────────────────────────
+function fmtBillions(n: number | null | undefined): string {
+  if (n == null || isNaN(n)) return '—';
+  if (Math.abs(n) >= 1) return `$${n.toFixed(2)}B`;
+  return `$${(n * 1000).toFixed(0)}M`;
+}
+
+function fmtBillionsPerYear(n: number | null | undefined): string {
+  if (n == null || isNaN(n)) return '—';
+  if (Math.abs(n) >= 1) return `$${n.toFixed(2)}B/yr`;
+  return `$${(n * 1000).toFixed(0)}M/yr`;
+}
+
+function fmtYears(n: number | null | undefined): string {
+  if (n == null || isNaN(n) || !isFinite(n)) return '—';
+  return `${n.toFixed(1)}y`;
+}
+
 const TABS = [
   { id: 'catalyst',    label: 'Catalyst Timeline' },
   { id: 'science',     label: 'Science Risk' },
@@ -50,8 +68,8 @@ export default function CompanyDetail({
     return dt > NOW;
   }).length;
 
-  const runway = (c.cash / c.burnRate).toFixed(1);
-  const runwayColor = parseFloat(runway) >= 3 ? 'var(--success)' : parseFloat(runway) >= 1.5 ? 'var(--warn)' : 'var(--danger)';
+  const runwayYears = c.cash / c.burnRate;
+  const runwayColor = runwayYears >= 3 ? 'var(--success)' : runwayYears >= 1.5 ? 'var(--warn)' : 'var(--danger)';
 
   // pipeline score
   let scoreSum = 0;
@@ -114,13 +132,13 @@ export default function CompanyDetail({
         </div>
         <div className={styles.statCard}>
           <div className={styles.statLabel}>Market Cap</div>
-          <div className={styles.statVal} style={{ color: 'var(--accent)' }}>${c.mktCap}B</div>
-          <div className={styles.statHint}>rNPV ~${npv.toFixed(1)}B</div>
+          <div className={styles.statVal} style={{ color: 'var(--accent)' }}>{fmtBillions(c.mktCap)}</div>
+          <div className={styles.statHint}>rNPV ~{fmtBillions(npv)}</div>
         </div>
         <div className={styles.statCard}>
           <div className={styles.statLabel}>Cash Runway</div>
-          <div className={styles.statVal} style={{ color: runwayColor }}>{runway}y</div>
-          <div className={styles.statHint}>${c.cash}B · ${c.burnRate}B/yr</div>
+          <div className={styles.statVal} style={{ color: runwayColor }}>{fmtYears(runwayYears)}</div>
+          <div className={styles.statHint}>{fmtBillions(c.cash)} · {fmtBillionsPerYear(c.burnRate)}</div>
         </div>
         <div className={styles.statCard}>
           <div className={styles.statLabel}>Catalysts Ahead</div>
