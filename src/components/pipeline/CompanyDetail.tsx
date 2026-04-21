@@ -49,8 +49,9 @@ export default function CompanyDetail({
   const c = company;
   const livePrice  = price?.price  ?? c.price;
   const liveChange = price?.change ?? c.priceChange ?? 0;
+  // Prefer Finnhub's live mktCap over the stored one, which may be stale
+  const liveMktCap = price?.mktCap ?? c.mktCap;
 
-  // ── Refresh pipeline state ───────────────────────────────────────────────
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const [refreshResult, setRefreshResult] = useState<{ added: string[]; removed: string[]; updated: string[] } | null>(null);
@@ -70,18 +71,16 @@ export default function CompanyDetail({
         setRefreshError(data.error || 'Refresh failed');
         return;
       }
-      // Diff old vs new pipeline
       const oldDrugs = new Set((c.pipeline ?? []).map((d: any) => d.drug));
       const newDrugs = new Set(data.pipeline.map((d: any) => d.drug));
       const added = data.pipeline.filter((d: any) => !oldDrugs.has(d.drug)).map((d: any) => d.drug);
       const removed = (c.pipeline ?? []).filter((d: any) => !newDrugs.has(d.drug)).map((d: any) => d.drug);
       const updated = data.pipeline.filter((d: any) => oldDrugs.has(d.drug)).map((d: any) => d.drug);
 
-      // Merge: keep existing science scores from old drugs that are still present
+      // Merge: preserve user-edited science scores and other fields
       const mergedPipeline = data.pipeline.map((newDrug: any) => {
         const existing = (c.pipeline ?? []).find((d: any) => d.drug === newDrug.drug);
         if (existing) {
-          // Preserve the existing science scores AND any user-edited fields
           return {
             ...newDrug,
             science: existing.science ?? newDrug.science,
@@ -93,14 +92,14 @@ export default function CompanyDetail({
         return newDrug;
       });
 
-      // Save to Supabase
+      // Save to Supabase — mktCap stays from Finnhub (liveMktCap), NEVER from AI
       const { error: dbErr } = await supabase.from('watchlist').upsert({
         ticker: c.ticker,
         name: c.name,
         sector: c.sector,
-        mkt_cap: data.financials.mktCap ?? c.mktCap,
-        cash: data.financials.cash ?? c.cash,
-        burn_rate: data.financials.burnRate ?? c.burnRate,
+        mkt_cap: liveMktCap,                          // Finnhub canonical
+        cash: data.financials.cash ?? c.cash,         // AI fills in
+        burn_rate: data.financials.burnRate ?? c.burnRate, // AI fills in
         pipeline: mergedPipeline,
       }, { onConflict: 'ticker' });
 
@@ -109,8 +108,6 @@ export default function CompanyDetail({
       }
 
       setRefreshResult({ added, removed, updated });
-      // Note: parent state update happens via Supabase reload on next mount.
-      // For instant UI update, you'd need a callback prop — see notes below.
     } catch (e: any) {
       setRefreshError(e.message || 'Network error');
     } finally {
@@ -138,7 +135,6 @@ export default function CompanyDetail({
   const runwayYears = c.cash / c.burnRate;
   const runwayColor = runwayYears >= 3 ? 'var(--success)' : runwayYears >= 1.5 ? 'var(--warn)' : 'var(--danger)';
 
-  // pipeline score
   let scoreSum = 0;
   c.pipeline.forEach((d: any) => {
     const key = c.ticker + '_' + d.drug;
@@ -163,7 +159,6 @@ export default function CompanyDetail({
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          {/* Refresh pipeline button */}
           <button
             onClick={handleRefreshPipeline}
             disabled={refreshing}
@@ -180,7 +175,7 @@ export default function CompanyDetail({
               letterSpacing: 0.4,
               transition: 'all .15s',
             }}
-            title="Re-discover pipeline from public sources (10-K, IR page, ClinicalTrials.gov)"
+            title="Re-discover pipeline from public sources"
           >
             {refreshing ? '◌ refreshing…' : '🔄 refresh pipeline'}
           </button>
@@ -193,7 +188,6 @@ export default function CompanyDetail({
         </div>
       </div>
 
-      {/* Refresh result banner */}
       {refreshError && (
         <div style={{
           padding: '8px 12px',
@@ -237,12 +231,11 @@ export default function CompanyDetail({
             )}
           </div>
           <div style={{ fontSize: 10, color: 'var(--muted)', fontStyle: 'italic' }}>
-            Reload the page to see the changes reflected in the UI (auto-refresh in next iteration).
+            Reload the page to see the changes reflected in the UI.
           </div>
         </div>
       )}
 
-      {/* Thesis / entry banner */}
       {(notes?.thesis || c.thesis) && (
         <div className={styles.thesisBanner}>
           <div className={styles.thesisLabel}>YOUR THESIS</div>
@@ -271,7 +264,7 @@ export default function CompanyDetail({
         </div>
         <div className={styles.statCard}>
           <div className={styles.statLabel}>Market Cap</div>
-          <div className={styles.statVal} style={{ color: 'var(--accent)' }}>{fmtBillions(c.mktCap)}</div>
+          <div className={styles.statVal} style={{ color: 'var(--accent)' }}>{fmtBillions(liveMktCap)}</div>
           <div className={styles.statHint}>rNPV ~{fmtBillions(npv)}</div>
         </div>
         <div className={styles.statCard}>
@@ -286,7 +279,6 @@ export default function CompanyDetail({
         </div>
       </div>
 
-      {/* Tab bar */}
       <div className={styles.tabBar}>
         {TABS.map(t => (
           <button
@@ -299,7 +291,6 @@ export default function CompanyDetail({
         ))}
       </div>
 
-      {/* Tab content */}
       <div className={styles.tabContent}>
         {activeTab === 'catalyst'   && <CatalystTab   company={c} scienceScores={scienceScores} />}
         {activeTab === 'science'    && <ScienceTab    company={c} scienceScores={scienceScores} onScore={onScienceScore} />}

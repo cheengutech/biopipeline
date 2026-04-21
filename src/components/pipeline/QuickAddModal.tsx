@@ -11,7 +11,7 @@ interface Props {
 
 interface DiscoveredPipeline {
   pipeline: any[];
-  financials: { mktCap: number | null; cash: number | null; burnRate: number | null };
+  financials: { cash: number | null; burnRate: number | null }; // mktCap intentionally not here
   confidence: 'high' | 'medium' | 'low';
   sources: string[];
   overall_note?: string;
@@ -27,7 +27,6 @@ const SECTORS = [
 ];
 
 export default function QuickAddModal({ onClose, onAdd, existingTickers }: Props) {
-  // Step state: 'lookup' → 'discovering' → 'review' → 'manual fallback'
   const [step, setStep] = useState<'lookup' | 'discovering' | 'review' | 'manual'>('lookup');
   const [ticker, setTicker] = useState('');
   const [fetched, setFetched] = useState<any>(null);
@@ -36,11 +35,9 @@ export default function QuickAddModal({ onClose, onAdd, existingTickers }: Props
   const [error, setError] = useState('');
   const [sector, setSector] = useState('oncology');
 
-  // Manual fallback fields
   const [drug, setDrug] = useState('');
   const [phase, setPhase] = useState('Phase 2');
 
-  // Review-screen edits: lets user remove drugs before saving
   const [includedDrugs, setIncludedDrugs] = useState<Set<number>>(new Set());
 
   async function lookup() {
@@ -55,9 +52,6 @@ export default function QuickAddModal({ onClose, onAdd, existingTickers }: Props
         setError(`Could not find ${t}. Check the ticker.`);
       } else {
         setFetched({ ...d, ticker: t });
-        // Default the sector based on what (if anything) Finnhub returns
-        // (You could improve this by mapping Finnhub's industry to your sector enum)
-        // Auto-trigger discovery
         runDiscover(t, d.name);
       }
     } catch {
@@ -82,7 +76,6 @@ export default function QuickAddModal({ onClose, onAdd, existingTickers }: Props
         return;
       }
       setDiscovered(data);
-      // Default: include all discovered drugs
       setIncludedDrugs(new Set(data.pipeline.map((_: any, i: number) => i)));
       setStep('review');
     } catch (e: any) {
@@ -112,7 +105,8 @@ export default function QuickAddModal({ onClose, onAdd, existingTickers }: Props
       name: fetched.name || fetched.ticker,
       ticker: fetched.ticker,
       sector,
-      mktCap: fin.mktCap ?? fetched.mktCap ?? 1.0,
+      // mktCap ALWAYS from Finnhub (fetched.mktCap), never from AI
+      mktCap: fetched.mktCap || 1.0,
       price: fetched.price,
       priceChange: fetched.change,
       cash: fin.cash ?? (fetched.mktCap || 1.0) * 0.15,
@@ -141,13 +135,12 @@ export default function QuickAddModal({ onClose, onAdd, existingTickers }: Props
         enrollment: 0, primaryEndpoint: 'TBD', data: 'TBD',
         orphan: false, designations: [], peakSales: 1.0,
         science: { targetVal: 3, moa: 3, endpoint: 3, trial: 3, biomarker: 3, safety: 3 },
-        catalysts: [],
+        catalysts: [], combinations: [],
       }],
     });
     onClose();
   }
 
-  // ── Render ────────────────────────────────────────────────────────────
   return (
     <div className={styles.overlay} onClick={onClose}>
       <div className={styles.modal} onClick={e => e.stopPropagation()} style={{ maxWidth: 560 }}>
@@ -158,7 +151,6 @@ export default function QuickAddModal({ onClose, onAdd, existingTickers }: Props
           {step === 'manual' && `${fetched?.name || ''} — Manual entry`}
         </h3>
 
-        {/* STEP 1: Lookup */}
         {step === 'lookup' && (
           <>
             <div className={styles.row}>
@@ -192,7 +184,6 @@ export default function QuickAddModal({ onClose, onAdd, existingTickers }: Props
           </>
         )}
 
-        {/* STEP 2: Discovering (loading) */}
         {step === 'discovering' && (
           <div style={{ padding: '28px 0', textAlign: 'center' }}>
             <div style={{ fontSize: 32, marginBottom: 12 }}>◌</div>
@@ -205,10 +196,8 @@ export default function QuickAddModal({ onClose, onAdd, existingTickers }: Props
           </div>
         )}
 
-        {/* STEP 3: Review */}
         {step === 'review' && discovered && fetched && (
           <>
-            {/* Price + financials banner */}
             <div className={styles.priceRow}>
               <div>
                 <div className={styles.metaLabel}>Price</div>
@@ -220,15 +209,14 @@ export default function QuickAddModal({ onClose, onAdd, existingTickers }: Props
                   {fetched.change >= 0 ? '+' : ''}{fetched.change.toFixed(1)}%
                 </div>
               </div>
-              {discovered.financials.mktCap != null && (
+              {fetched.mktCap && (
                 <div>
                   <div className={styles.metaLabel}>Mkt Cap</div>
-                  <div className={styles.bigVal}>${discovered.financials.mktCap.toFixed(2)}B</div>
+                  <div className={styles.bigVal}>${fetched.mktCap.toFixed(2)}B</div>
                 </div>
               )}
             </div>
 
-            {/* Confidence callout */}
             <div style={{
               padding: '10px 12px',
               marginBottom: 12,
@@ -259,7 +247,6 @@ export default function QuickAddModal({ onClose, onAdd, existingTickers }: Props
               {discovered.overall_note && <div style={{ marginTop: 4 }}>{discovered.overall_note}</div>}
             </div>
 
-            {/* Pipeline list with toggle */}
             <div style={{
               maxHeight: 280,
               overflowY: 'auto',
@@ -291,7 +278,7 @@ export default function QuickAddModal({ onClose, onAdd, existingTickers }: Props
                     style={{ marginTop: 2 }}
                   />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 2 }}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 2, flexWrap: 'wrap' }}>
                       <span style={{ fontWeight: 500, fontSize: 13 }}>{d.drug}</span>
                       <span style={{
                         fontSize: 10,
@@ -318,6 +305,11 @@ export default function QuickAddModal({ onClose, onAdd, existingTickers }: Props
                       {d.target && <span>{d.target} · </span>}
                       {d.indication}
                     </div>
+                    {d.combinations && d.combinations.length > 0 && (
+                      <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 3, opacity: 0.85 }}>
+                        + Combinations: {d.combinations.join(', ')}
+                      </div>
+                    )}
                     {d.catalysts && d.catalysts.length > 0 && (
                       <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 3, opacity: 0.8 }}>
                         Next: {d.catalysts[0].label} ({d.catalysts[0].date})
@@ -360,7 +352,6 @@ export default function QuickAddModal({ onClose, onAdd, existingTickers }: Props
           </>
         )}
 
-        {/* STEP 4: Manual fallback */}
         {step === 'manual' && fetched && (
           <>
             <div className={styles.priceRow}>
@@ -382,7 +373,6 @@ export default function QuickAddModal({ onClose, onAdd, existingTickers }: Props
           </>
         )}
 
-        {/* Footer buttons */}
         <div className={styles.btns}>
           <button className={styles.cancelBtn} onClick={onClose}>Cancel</button>
           {step === 'review' && discovered && (
