@@ -12,6 +12,13 @@ interface Props {
   onScore: (key: string, dim: string, val: number) => void;
 }
 
+interface AISuggestion {
+  scores: Record<string, number>;
+  reasoning: Record<string, string>;
+  confidence: Record<string, 'high' | 'medium' | 'low'>;
+  overall_note?: string;
+}
+
 export default function ScienceTab({ company, scienceScores, onScore }: Props) {
   const c = company;
   const activeDrugs = c.pipeline.filter((d: any) => d.phase !== 'Approved');
@@ -19,11 +26,17 @@ export default function ScienceTab({ company, scienceScores, onScore }: Props) {
   const radarRef = useRef<HTMLCanvasElement>(null);
   const radarChart = useRef<Chart|null>(null);
 
+  // ── AI suggestions state, keyed by ticker_drug so they persist when switching ──
+  const [aiByKey, setAiByKey] = useState<Record<string, AISuggestion>>({});
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+
   const drug = c.pipeline.find((d: any) => d.drug === activeDrug) ?? c.pipeline[0];
   if (!drug) return <div style={{color:'var(--muted)'}}>No pipeline assets.</div>;
 
   const key = c.ticker + '_' + drug.drug;
   const scores = scienceScores[key] ?? drug.science ?? {};
+  const aiSuggestion = aiByKey[key];
 
   const baseProb = FDA_PROBS[drug.phase]?.toApproval ?? 1.0;
   const sectorAdj = baseProb * (SECTOR_MOD[c.sector] ?? 1.0);
@@ -36,6 +49,41 @@ export default function ScienceTab({ company, scienceScores, onScore }: Props) {
   SCIENCE_DIMS.forEach(d => { rawScore += (scores[d.id] ?? 3) * d.weight; });
   const pct = Math.round(((rawScore-1)/4)*100);
   const scoreColor = pct >= 65 ? 'var(--success)' : pct >= 40 ? 'var(--warn)' : 'var(--danger)';
+
+  // ── AI auto-score handler ──────────────────────────────────────────────────
+  async function handleAutoScore() {
+    setAiLoading(true);
+    setAiError(null);
+    try {
+      const res = await fetch('/api/science-suggest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ticker: c.ticker,
+          drug: drug.drug,
+          indication: drug.indication,
+          phase: drug.phase,
+          sector: c.sector,
+          designations: drug.designations ?? [],
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setAiError(data.error || 'AI scoring failed');
+        return;
+      }
+      // Save the suggestion locally
+      setAiByKey(prev => ({ ...prev, [key]: data }));
+      // Apply scores to the actual sliders via existing onScore callback
+      Object.entries(data.scores).forEach(([dim, val]) => {
+        onScore(key, dim, val as number);
+      });
+    } catch (e: any) {
+      setAiError(e.message || 'Network error');
+    } finally {
+      setAiLoading(false);
+    }
+  }
 
   // Radar chart
   useEffect(() => {
@@ -64,6 +112,14 @@ export default function ScienceTab({ company, scienceScores, onScore }: Props) {
   const crls = CRL_PATTERNS[c.sector] ?? [];
   const SCORE_LABELS: Record<number,string> = {1:'Poor',2:'Weak',3:'Fair',4:'Good',5:'Strong'};
 
+  // Confidence badge styling
+  const confColor = (conf?: string) => {
+    if (conf === 'high') return 'var(--success)';
+    if (conf === 'medium') return 'var(--warn)';
+    if (conf === 'low') return 'var(--danger)';
+    return 'var(--muted)';
+  };
+
   return (
     <div>
       {/* Drug selector */}
@@ -81,10 +137,70 @@ export default function ScienceTab({ company, scienceScores, onScore }: Props) {
       <div className={styles.scienceGrid}>
         {/* Left: dimensions */}
         <div>
-          <div className={styles.sectionTitle}>{drug.drug} — Science Dimensions <span className={styles.badge} style={{background:'rgba(0,200,212,0.2)',color:'var(--teal)'}}>Adjustable</span></div>
+          <div className={styles.sectionTitle} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:8 }}>
+            <div>
+              {drug.drug} — Science Dimensions
+              <span className={styles.badge} style={{background:'rgba(0,200,212,0.2)',color:'var(--teal)', marginLeft:8}}>Adjustable</span>
+            </div>
+            <button
+              onClick={handleAutoScore}
+              disabled={aiLoading}
+              style={{
+                padding:'6px 12px',
+                borderRadius:6,
+                border:'1px solid var(--accent)',
+                background: aiLoading ? 'rgba(0,229,180,0.1)' : 'rgba(0,229,180,0.18)',
+                color:'var(--accent)',
+                cursor: aiLoading ? 'wait' : 'pointer',
+                fontSize:11,
+                fontWeight:500,
+                fontFamily:'var(--font-mono)',
+                letterSpacing:.4,
+                transition:'all .15s',
+              }}
+              title="Use Claude to auto-score all 6 dimensions based on public data"
+            >
+              {aiLoading ? '◌ scoring…' : '✨ AI auto-score'}
+            </button>
+          </div>
+
+          {/* AI error banner */}
+          {aiError && (
+            <div style={{
+              padding:'8px 12px',
+              marginBottom:12,
+              background:'rgba(232,69,74,0.1)',
+              border:'1px solid rgba(232,69,74,0.4)',
+              borderRadius:6,
+              fontSize:11,
+              color:'var(--danger)',
+            }}>
+              ⚠ {aiError}
+            </div>
+          )}
+
+          {/* AI overall note (e.g. "I don't know this program well") */}
+          {aiSuggestion?.overall_note && (
+            <div style={{
+              padding:'8px 12px',
+              marginBottom:12,
+              background:'rgba(247,180,67,0.08)',
+              border:'1px solid rgba(247,180,67,0.3)',
+              borderRadius:6,
+              fontSize:11,
+              color:'var(--warn)',
+              lineHeight:1.5,
+            }}>
+              <span style={{ fontFamily:'var(--font-mono)', letterSpacing:.4, marginRight:6 }}>AI NOTE:</span>
+              {aiSuggestion.overall_note}
+            </div>
+          )}
+
           {SCIENCE_DIMS.map(dim => {
             const val = scores[dim.id] ?? 3;
             const fc = val >= 4 ? 'var(--success)' : val >= 3 ? 'var(--warn)' : 'var(--danger)';
+            const aiReason = aiSuggestion?.reasoning?.[dim.id];
+            const aiConf = aiSuggestion?.confidence?.[dim.id];
             return (
               <div key={dim.id} className={styles.sciDim}>
                 <div className={styles.sciDimHeader}>
@@ -95,6 +211,45 @@ export default function ScienceTab({ company, scienceScores, onScore }: Props) {
                   <div style={{ height:'100%', width:`${val*20}%`, background:fc, borderRadius:3, transition:'width .4s' }}/>
                 </div>
                 <div style={{ fontSize:11, color:'var(--muted)', marginBottom:6, lineHeight:1.5 }}>{dim.desc}</div>
+
+                {/* AI reasoning, if available */}
+                {aiReason && (
+                  <div style={{
+                    fontSize:11,
+                    color:'var(--text)',
+                    marginBottom:6,
+                    padding:'6px 8px',
+                    background:'rgba(0,229,180,0.05)',
+                    borderLeft:'2px solid var(--accent)',
+                    borderRadius:'0 4px 4px 0',
+                    lineHeight:1.5,
+                    fontStyle:'italic',
+                  }}>
+                    <span style={{
+                      fontFamily:'var(--font-mono)',
+                      fontStyle:'normal',
+                      fontSize:9,
+                      letterSpacing:.5,
+                      color:'var(--accent)',
+                      marginRight:6,
+                    }}>AI</span>
+                    {aiConf && (
+                      <span style={{
+                        fontFamily:'var(--font-mono)',
+                        fontStyle:'normal',
+                        fontSize:9,
+                        letterSpacing:.4,
+                        color: confColor(aiConf),
+                        marginRight:6,
+                        opacity:.85,
+                      }}>
+                        [{aiConf} conf]
+                      </span>
+                    )}
+                    {aiReason}
+                  </div>
+                )}
+
                 <div style={{ display:'flex', gap:3 }}>
                   {[1,2,3,4,5].map(n => (
                     <button key={n}
